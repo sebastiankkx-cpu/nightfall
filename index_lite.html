@@ -334,6 +334,15 @@
 <canvas id="fxCanvas"></canvas>
 <div id="vignette"></div>
 
+<script>
+window.addEventListener('error', function (e) {
+    try {
+        var d = document.getElementById('nf-err');
+        if (!d) { d = document.createElement('div'); d.id = 'nf-err'; d.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:35%;overflow:auto;z-index:99999;background:rgba(120,0,0,.92);color:#fff;font:11px monospace;padding:6px;white-space:pre-wrap;'; d.onclick = function () { d.remove(); }; document.body.appendChild(d); }
+        d.textContent += (e.message || 'error') + (e.lineno ? ' @' + e.lineno : '') + '\n(toca para cerrar)\n';
+    } catch (x) {}
+});
+</script>
 
 <script>
 if (typeof THREE === 'undefined') {
@@ -980,16 +989,20 @@ const HERO_DEFAULT_WEAPON = { human: 'sword_1handed', werewolf: 'axe_1handed', s
 const GLB_SCALE = 13.5;
 let heroGLB = null, heroHitFlag = false, _glbWeaponCache = {};
 
-function glbBuffer(key) {
+async function glbBuffer(key) {
     const b64 = (window.NF_GLB || {})[key]; if (!b64) return null;
     const bin = atob(b64), u = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    return u.buffer;
+    if (typeof DecompressionStream === 'undefined') return null; // sin soporte: héroe procedural
+    const ds = new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(ds).arrayBuffer();
 }
 function parseGLB(key, cb) {
-    const buf = glbBuffer(key);
-    if (!buf || !THREE.GLTFLoader) { cb(null); return; }
-    try { new THREE.GLTFLoader().parse(buf, '', g => cb(g), () => cb(null)); } catch (e) { cb(null); }
+    if (!THREE.GLTFLoader) { cb(null); return; }
+    glbBuffer(key).then(buf => {
+        if (!buf) { cb(null); return; }
+        try { new THREE.GLTFLoader().parse(buf, '', g => cb(g), () => cb(null)); } catch (e) { cb(null); }
+    }).catch(() => cb(null));
 }
 function loadWeaponGLB(kind, cb) {
     if (_glbWeaponCache[kind]) { cb(_glbWeaponCache[kind].scene.clone(true)); return; }
