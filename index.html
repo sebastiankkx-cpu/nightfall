@@ -271,6 +271,7 @@
             <button onclick="saveGame(true)" style="width:auto; padding:4px 8px; margin:0; font-size:11px; background:#1565c0;">💾 Guardar</button>
         </div>
         <div id="attr-panel" style="background:#1c1c1c; border:1px solid #c8a253; padding:8px; border-radius:5px; margin-bottom:8px; font-size:11px;"></div>
+        <div id="set-panel" style="display:none; background:#1c1c1c; border:1px solid #ff6d00; padding:8px; border-radius:5px; margin-bottom:8px; font-size:11px;"></div>
         <div class="equip-grid" id="equipped-grid"></div>
         <div class="sell-controls">
             <label style="color:#81c784; font-size:11px;">Filtro Auto-Venta al recoger del suelo:</label>
@@ -1008,6 +1009,46 @@ const SLOT_INFO = {
     gloves: { label: "🧤 Guantes", names: ["Guanteletes", "Manoplas", "Brazales"] },
     boots:  { label: "🥾 Botas",   names: ["Botas", "Grebas", "Escarpines"] },
     ring:   { label: "💍 Anillo",  names: ["Anillo", "Sello", "Sortija"] }
+};
+
+// ============================================================================
+// SETS DE EQUIPO: cada conjunto desbloquea habilidades según cuántas piezas lleves equipadas.
+// Para añadir uno nuevo basta con agregar una entrada aquí (piezas, fuentes de drop y tramos).
+// fx admitidos: hpPct defPct atkPct crit spd regen ward procFire poison skillMult cdr skillNova lastStand
+// ============================================================================
+const SETS = {
+    divine_dragon: {
+        name: 'Divino Dragón', icon: '🐉', color: '#ff6d00', rarity: 'Mítico',
+        pieces: { helm: 'Yelmo del Divino Dragón', chest: 'Coraza del Divino Dragón', weapon: 'Mandoble del Divino Dragón',
+                  gloves: 'Manoplas del Divino Dragón', boots: 'Grebas del Divino Dragón', ring: 'Sello del Divino Dragón' },
+        drop: { worldboss: 0.55, chest_boss: 0.06 },
+        tiers: [
+            { n: 2, name: 'Escamas Divinas',      desc: '+12% Vida máx. y −12% daño recibido', fx: { hpPct: 0.12, ward: 0.12 } },
+            { n: 3, name: 'Aliento Ardiente',     desc: '15% al golpear: explosión de fuego (120% ATQ en área)', fx: { procFire: 0.15 } },
+            { n: 4, name: 'Furia Dracónica',      desc: '+15% ATQ y +10% prob. crítico', fx: { atkPct: 0.15, crit: 0.10 } },
+            { n: 5, name: 'Corazón de Brasa',     desc: '+15% DEF y regenera 1% de Vida por segundo', fx: { defPct: 0.15, regen: 0.01 } },
+            { n: 6, name: 'Ascensión del Dragón', desc: '+40% poder de artes, −30% enfriamiento y Nova de fuego al lanzar un arte', fx: { skillMult: 0.40, cdr: 0.30, skillNova: true } }
+        ]
+    },
+    dawn_guardian: {
+        name: 'Guardián del Alba', icon: '🌅', color: '#ffd54f', rarity: 'Legendario',
+        pieces: { helm: 'Yelmo del Alba', chest: 'Coraza del Alba', gloves: 'Manoplas del Alba', boots: 'Botas del Alba' },
+        drop: { dungeonboss: 0.60, chest_boss: 0.08, chest_elite: 0.04, champion: 0.03 },
+        tiers: [
+            { n: 2, name: 'Luz Protectora',    desc: '+10% DEF y +8% Vida máx.', fx: { defPct: 0.10, hpPct: 0.08 } },
+            { n: 3, name: 'Bendición del Alba', desc: 'Regenera 1% de Vida por segundo', fx: { regen: 0.01 } },
+            { n: 4, name: 'Último Amanecer',   desc: 'Al bajar de 30% de Vida: escudo y curación del 30% (cada 60 s)', fx: { lastStand: true } }
+        ]
+    },
+    aldris_shadow: {
+        name: 'Sombra de Aldris', icon: '🌑', color: '#b388ff', rarity: 'Legendario',
+        pieces: { weapon: 'Filo de Aldris', ring: 'Sello de Aldris', boots: 'Pasos de Aldris' },
+        drop: { necromancer: 0.04, champion: 0.04, chest_elite: 0.06, chest_boss: 0.08, dungeonboss: 0.15 },
+        tiers: [
+            { n: 2, name: 'Paso Silente',      desc: '+0.5 VEL y +8% prob. crítico', fx: { spd: 0.5, crit: 0.08 } },
+            { n: 3, name: 'Toque Venenoso',    desc: 'Tus golpes envenenan al enemigo y +10% ATQ', fx: { poison: true, atkPct: 0.10 } }
+        ]
+    }
 };
 
 // 7 NPCS CON EDIFICIOS EN LA GRAN CIUDADELA Y EL MUNDO
@@ -2264,6 +2305,12 @@ function getStats() {
         let it = player.equipment[k];
         if (it) { atk += it.atk || 0; def += it.def || 0; maxHp += it.hp || 0; spd += it.spd || 0; }
     }
+    // Bonos de sets de equipo
+    const setB = getSetBonus();
+    if (setB.atkPct) atk = Math.floor(atk * (1 + setB.atkPct));
+    if (setB.defPct) def = Math.floor(def * (1 + setB.defPct));
+    if (setB.hpPct) maxHp = Math.floor(maxHp * (1 + setB.hpPct));
+    critBonus += setB.crit; spd += setB.spd; skillMult += setB.skillMult;
     // Bonificaciones de Especialización (Rama de Habilidades)
     if (player.spec === 'blood') maxHp = Math.floor(maxHp * 1.15);
     if (player.spec === 'shadow') { critBonus += 0.12; spd += 0.35; }
@@ -2278,7 +2325,7 @@ function getStats() {
     if (player.frenzyTimer > 0) { atk = Math.floor(atk * 1.3); spd += 0.7; }
     if (player.isMounted) spd += 2.3;
     if (player.shieldTimer > 0) def += 25;
-    return { atk, def, maxHp, spd: Number(spd.toFixed(1)), skillMult, critBonus };
+    return { atk, def, maxHp, spd: Number(spd.toFixed(1)), skillMult, critBonus, set: setB };
 }
 
 function saveGame(notify = false) {
@@ -3361,26 +3408,29 @@ function updateItemStatsText(item) {
 
 function createLootMesh3D(item) {
     const geo = item.slot === 'potion' ? new THREE.SphereGeometry(7, 8, 8) : new THREE.BoxGeometry(12, 12, 12);
-    const col = item.color === '#ff1744' ? 0xff1744 : (item.color === '#ff9100' ? 0xff9100 : (item.color === '#e040fb' ? 0xe040fb : (item.color === '#00e5ff' ? 0x00e5ff : (item.color === '#ffeb3b' ? 0xffeb3b : (item.color === '#00e676' ? 0x00e676 : 0xffffff)))));
+    const col = /^#[0-9a-f]{6}$/i.test(item.color || '') ? parseInt(item.color.slice(1), 16) : 0xffffff;
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col }));
     mesh.position.set(item.x, 8, item.y);
+    if (item.setId) mesh.scale.setScalar(1.4);
     worldGroup.add(mesh);
     item.mesh = mesh;
 }
 
 function createEquipmentItem(x, y, enemyType, forceUnique = false, opts = {}) {
-    let r = opts.rarity || rollRarityFromConfig(enemyType);
+    let setDef = opts.setId ? SETS[opts.setId] : null;
+    if (!setDef && !opts.rarity && !forceUnique) { const sid = rollSetDrop(enemyType); if (sid) { opts = Object.assign({}, opts, { setId: sid }); setDef = SETS[sid]; } }
+    let r = setDef ? setDef.rarity : (opts.rarity || rollRarityFromConfig(enemyType));
     if (forceUnique && (r === 'Común' || r === 'Raro')) r = 'Legendario';
 
     let uniqueSpec = null;
-    if (!opts.rarity && (forceUnique || r === 'Mítico' || (r === 'Legendario' && Math.random() < 0.65) || (r === 'Épico' && Math.random() < 0.25))) {
+    if (!setDef && !opts.rarity && (forceUnique || r === 'Mítico' || (r === 'Legendario' && Math.random() < 0.65) || (r === 'Épico' && Math.random() < 0.25))) {
         const uList = NIGHTFALL_CONFIG.uniqueEffects;
         uniqueSpec = uList[Math.floor(Math.random() * uList.length)];
     }
 
     const slots = ['helm', 'chest', 'weapon', 'gloves', 'boots', 'ring'];
-    const slot = opts.slot || (uniqueSpec ? uniqueSpec.slot : slots[Math.floor(Math.random() * slots.length)]);
-    const baseName = uniqueSpec ? uniqueSpec.namePrefix : SLOT_INFO[slot].names[Math.floor(Math.random() * SLOT_INFO[slot].names.length)];
+    const slot = setDef ? (opts.slot && setDef.pieces[opts.slot] ? opts.slot : pickSetPiece(opts.setId)) : (opts.slot || (uniqueSpec ? uniqueSpec.slot : slots[Math.floor(Math.random() * slots.length)]));
+    const baseName = setDef ? setDef.pieces[slot] : (uniqueSpec ? uniqueSpec.namePrefix : SLOT_INFO[slot].names[Math.floor(Math.random() * SLOT_INFO[slot].names.length)]);
     const multMap = { "Común": 1.0, "Raro": 1.65, "Épico": 2.5, "Legendario": 3.5, "Mítico": 4.6 };
     const colorMap = { "Común": "#ffffff", "Raro": "#00e5ff", "Épico": "#e040fb", "Legendario": "#ff9100", "Mítico": "#ff1744" };
     let mult = multMap[r] || 1.0;
@@ -3392,9 +3442,10 @@ function createEquipmentItem(x, y, enemyType, forceUnique = false, opts = {}) {
         name: `${baseName} [${r}]`,
         atk: 0, def: 0, hp: 0, spd: 0, val: pwr,
         price: pwr * (r === "Mítico" ? 18 : (r === "Legendario" ? 13 : (r === "Épico" ? 8 : (r === "Raro" ? 4 : 2)))),
-        color: colorMap[r] || "#ffffff",
+        color: setDef ? setDef.color : (colorMap[r] || "#ffffff"),
         mesh: null
     };
+    if (setDef) item.setId = opts.setId;
 
     if (slot === 'weapon') item.atk = pwr * 2;
     else if (slot === 'chest') item.def = Math.ceil(pwr * 1.5);
@@ -4933,7 +4984,7 @@ function performAction() {
     // 5. Ataque con Espada 3D y Golpes Críticos
     player.isMounted = false;
     playSound('swing');
-    let hitAny = false, strongHit = false;
+    let hitAny = false, strongHit = false, procDone = false;
     enemies.forEach(en => {
         if (Math.hypot(player.x - en.x, player.y - en.y) < 78 + en.size) {
             hitAny = true;
@@ -4953,6 +5004,8 @@ function performAction() {
                 let healAmt = Math.max(1, Math.floor(dmg * leechPct));
                 player.hp = Math.min(st.maxHp, player.hp + healAmt);
             }
+            if (st.set.poison) en.poison = Math.max(en.poison || 0, 150);
+            if (st.set.procFire && !procDone && Math.random() < st.set.procFire) { procDone = true; setFireBurst(en, st); }
             let hitLabel = isBackstab ? `🗡️ ¡ESPALDA -${dmg}!` : (isCrit ? `💥 ¡CRÍTICO -${dmg}!` : `-${dmg}`);
             let hitColor = isBackstab ? "#00e5ff" : (isCrit ? "#ffeb3b" : "#ffffff");
             if (isCrit || isBackstab) strongHit = true;
@@ -5001,6 +5054,9 @@ function checkEnemyDeaths() {
                     player.firstKillBosses[d.type] = true;
                     lootDrops.push(createEquipmentItem(d.x, d.y, d.type, true));
                     showNotify(`🏆 ¡Primera Victoria contra ${d.name}! Obtuviste un Objeto Único Garantizado y un Cofre de Jefe.`);
+                    const sid = d.type === 'worldboss' ? 'divine_dragon' : 'dawn_guardian';
+                    lootDrops.push(createEquipmentItem(d.x + 18, d.y + 10, d.type, false, { setId: sid }));
+                    showNotify(`${SETS[sid].icon} ¡Pieza del set ${SETS[sid].name} caída del jefe!`);
                 }
                 // Generar Cofre de Jefe en el lugar de su caída
                 let bChest = { x: d.x, y: d.y, chestType: 'boss', label: '👑 Cofre de Jefe', mesh: null };
@@ -5079,6 +5135,7 @@ function renderInventory() {
             </div>
         `;
     }
+    renderSetPanel();
     const grid = document.getElementById('equipped-grid');
     grid.innerHTML = '';
     for (let key in SLOT_INFO) {
@@ -5086,7 +5143,7 @@ function renderInventory() {
         const div = document.createElement('div');
         div.className = 'equip-slot';
         div.innerHTML = `<strong>${SLOT_INFO[key].label}</strong>` +
-            (it ? `<span style="color:${it.color}; font-weight:bold;">${it.name}</span><br><span style="color:#aaa; font-size:10px;">${it.ilvl ? 'Nv.' + it.ilvl + ' · ' : ''}${it.statsText}</span>`
+            (it ? `<span style="color:${it.color}; font-weight:bold;">${it.name}</span><br><span style="color:#aaa; font-size:10px;">${it.ilvl ? 'Nv.' + it.ilvl + ' · ' : ''}${it.statsText}</span>${it.setId ? `<br><span style="color:${SETS[it.setId].color}; font-size:9.5px;">${SETS[it.setId].icon} ${SETS[it.setId].name}</span>` : ''}`
                 : `<span style="color:#666;">Vacío</span>`);
         grid.appendChild(div);
     }
@@ -5108,7 +5165,7 @@ function renderInventory() {
         d.innerHTML = `
             <div style="line-height:1.35;">
                 <span style="color:${item.color}; font-weight:bold;">${SLOT_INFO[item.slot].label.split(' ')[0]} ${item.name}</span>
-                <span style="color:#888; font-size:10px;">${item.ilvl ? 'Nv.' + item.ilvl + ' ' : ''}(${item.statsText})</span>${badge}<br>
+                <span style="color:#888; font-size:10px;">${item.ilvl ? 'Nv.' + item.ilvl + ' ' : ''}(${item.statsText})</span>${badge}${item.setId ? (() => { const S = SETS[item.setId], cn = (getSetCounts()[item.setId] || 0) - (eqp && eqp.setId === item.setId ? 1 : 0) + 1; return ` <span style="color:${S.color}; font-size:10px; font-weight:bold;">${S.icon} Set ${S.name} → ${cn}/${Object.keys(S.pieces).length}</span>`; })() : ''}<br>
                 <span style="font-size:10.5px;">Comparación: ${getComparisonHTML(item)}</span>${projLine}
             </div>
             <div class="inv-btns">
@@ -5133,10 +5190,113 @@ const ASCEND_COST = { 'Común': 12, 'Raro': 35, 'Épico': 85, 'Legendario': 200 
 const SHARD_YIELD = { 'Común': 2, 'Raro': 5, 'Épico': 12, 'Legendario': 28, 'Mítico': 55 };
 const CRAFT_COST = { 'Raro': 20, 'Épico': 55, 'Legendario': 140 };
 
+// ---------------- Lógica de sets ----------------
+function rollSetDrop(src) {
+    for (const id in SETS) { const p = SETS[id].drop[src]; if (p && Math.random() < p) return id; }
+    return null;
+}
+function pickSetPiece(setId) {
+    const slots = Object.keys(SETS[setId].pieces);
+    const owned = new Set();
+    for (const k in player.equipment) { const it = player.equipment[k]; if (it && it.setId === setId) owned.add(it.slot); }
+    player.inventory.forEach(it => { if (it.setId === setId) owned.add(it.slot); });
+    const missing = slots.filter(x => !owned.has(x));
+    const pool = (missing.length && Math.random() < 0.8) ? missing : slots;
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+function getSetCounts() {
+    const c = {};
+    for (const k in player.equipment) { const it = player.equipment[k]; if (it && it.setId && SETS[it.setId]) c[it.setId] = (c[it.setId] || 0) + 1; }
+    return c;
+}
+function getSetBonus() {
+    const b = { hpPct: 0, defPct: 0, atkPct: 0, crit: 0, spd: 0, regen: 0, ward: 0, procFire: 0, skillMult: 0, cdr: 0, poison: false, skillNova: false, lastStand: false };
+    const c = getSetCounts();
+    for (const id in c) for (const t of SETS[id].tiers) if (c[id] >= t.n) for (const k in t.fx) {
+        if (typeof t.fx[k] === 'boolean') b[k] = b[k] || t.fx[k]; else b[k] = (b[k] || 0) + t.fx[k];
+    }
+    return b;
+}
+let _setSig = null, _setLastStandCd = 0, _setHudT = 0;
+function announceSetTiers(prev, now) {
+    for (const id in now) for (const t of SETS[id].tiers) {
+        if (now[id] >= t.n && (prev[id] || 0) < t.n) {
+            playSound('levelup');
+            showNotify(`${SETS[id].icon} ${SETS[id].name} (${now[id]}/${Object.keys(SETS[id].pieces).length}): ¡${t.name}!`);
+        }
+    }
+}
+function setFireBurst(src, st) {
+    spawn3DSkillRing(src.x, src.y, 95, 0xff6d00);
+    enemies.forEach(e => {
+        if (Math.hypot(e.x - src.x, e.y - src.y) < 95 + e.size) {
+            const d = applyDamageToEnemy(e, Math.floor(st.atk * 1.2 * st.skillMult));
+            addFloatingText(e.x, e.y, `🔥 -${d}`, '#ff6d00', 15);
+        }
+    });
+}
+function setNova() {
+    const st = getStats();
+    spawn3DSkillRing(player.x, player.y, 130, 0xff6d00);
+    enemies.forEach(e => {
+        if (Math.hypot(e.x - player.x, e.y - player.y) < 130 + e.size) {
+            const d = applyDamageToEnemy(e, Math.floor(st.atk * 1.6 * st.skillMult));
+            addFloatingText(e.x, e.y, `🐲 -${d}`, '#ff6d00', 16);
+        }
+    });
+    checkEnemyDeaths();
+}
+function updateSetEffects(st) {
+    const c = getSetCounts(), sig = JSON.stringify(c);
+    if (_setSig !== null && sig !== _setSig) announceSetTiers(JSON.parse(_setSig), c);
+    _setSig = sig;
+    const sb = st.set; if (!sb || pendingRespawnMsg) return;
+    if (sb.regen && player.hp < st.maxHp) {
+        player.hp = Math.min(st.maxHp, player.hp + st.maxHp * sb.regen / 60);
+        if (++_setHudT % 20 === 0) updateHUD();
+    }
+    if (_setLastStandCd > 0) _setLastStandCd--;
+    if (sb.lastStand && _setLastStandCd <= 0 && player.hp > 0 && player.hp < st.maxHp * 0.30) {
+        _setLastStandCd = 3600;
+        player.shieldTimer = 240;
+        const heal = Math.floor(st.maxHp * 0.30);
+        player.hp = Math.min(st.maxHp, player.hp + heal);
+        spawn3DSkillRing(player.x, player.y, 110, 0xffd54f);
+        addFloatingText(player.x, player.y, `🌅 ¡AMANECER! +${heal}`, '#ffd54f', 17);
+        updateHUD();
+    }
+}
+// Enfriamiento reducido y Nova al lanzar un arte (envuelve castSkill)
+const _castSkillBase = castSkill;
+castSkill = function (num) {
+    const key = num === 1 ? 'skill1Cd' : 'skill2Cd', before = player[key];
+    _castSkillBase(num);
+    if (before <= 0 && player[key] > 100) {
+        const sb = getSetBonus();
+        if (sb.cdr) player[key] = Math.round(player[key] * (1 - sb.cdr));
+        if (sb.skillNova) setNova();
+    }
+};
+function renderSetPanel() {
+    const el = document.getElementById('set-panel'); if (!el) return;
+    const counts = getSetCounts(); let html = '';
+    for (const id in SETS) {
+        const S = SETS[id], slots = Object.keys(S.pieces), eq = counts[id] || 0;
+        const inBag = new Set(player.inventory.filter(i => i.setId === id).map(i => i.slot));
+        const has = slots.map(sl => ({ sl, eq: !!(player.equipment[sl] && player.equipment[sl].setId === id), bag: inBag.has(sl) }));
+        if (!has.some(h => h.eq || h.bag)) continue;
+        html += `<details ${eq ? 'open' : ''} style="margin-top:4px;"><summary style="color:${S.color}; cursor:pointer; font-weight:bold;">${S.icon} ${S.name} (${eq}/${slots.length})</summary>` +
+            `<div style="font-size:10px; margin:3px 0; line-height:1.35;">${has.map(h => `<span style="color:${h.eq ? S.color : (h.bag ? '#ffd54f' : '#555')};">${h.eq ? '●' : (h.bag ? '◐' : '○')} ${S.pieces[h.sl]}</span>`).join('<br>')}</div>` +
+            S.tiers.map(t => `<div style="color:${eq >= t.n ? '#69f0ae' : '#777'}; font-size:10.5px; line-height:1.35;">${eq >= t.n ? '✔' : '🔒'} (${t.n}) <b>${t.name}</b>: ${t.desc}</div>`).join('') + `</details>`;
+    }
+    el.style.display = html ? 'block' : 'none';
+    el.innerHTML = html ? `<strong style="color:#ffd54f;">🧩 Sets de Equipo</strong> <span style="color:#777; font-size:9.5px;">● equipada ◐ mochila ○ por conseguir</span>${html}` : '';
+}
+
 // Poder de una pieza (incluye forja y efecto único). Sirve para comparar dentro de la misma ranura.
 function gearScore(it) {
     if (!it) return 0;
-    return ((it.atk || 0) + (it.def || 0) + (it.hp || 0) / 5 + (it.spd || 0) * 20) * (it.uniqueId ? 1.08 : 1);
+    return ((it.atk || 0) + (it.def || 0) + (it.hp || 0) / 5 + (it.spd || 0) * 20) * (it.uniqueId ? 1.08 : 1) * (it.setId ? 1.15 : 1);
 }
 
 // Guarda la "receta" de la pieza (stats base + historial de mejoras) para poder reconstruirla / transferir su forja
@@ -5455,6 +5615,7 @@ function sellByFilter(filter) {
         else if (filter === 'weapon' && it.slot === 'weapon') match = true;
         else if (filter === 'armor' && (it.slot === 'helm' || it.slot === 'chest' || it.slot === 'gloves' || it.slot === 'boots')) match = true;
         else if (filter === 'accessory' && it.slot === 'ring') match = true;
+        if (it.setId) match = false;
         if (match) { goldGained += it.price; count++; player.inventory.splice(i, 1); }
     }
     if (count > 0) { playSound('coin'); showNotify(`Vendiste ${count} objeto(s) por +${goldGained} 💰.`); }
@@ -5538,6 +5699,8 @@ function damagePlayer(amount, label, color = "#ff5252", size = 15) {
         addFloatingText(player.x, player.y, "💨 ¡ESQUIVADO!", "#00e5ff", 15);
         return false;
     }
+    const wd = getSetBonus().ward;
+    if (wd > 0) { const na = Math.max(1, Math.floor(amount * (1 - wd))); if (label) label = label.split(String(amount)).join(String(na)); amount = na; }
     player.hp -= amount;
     haptic(amount > 25 ? 60 : 30);
     camShake = Math.min(9, 2.5 + amount * 0.18);
@@ -5629,6 +5792,7 @@ function gameLoop() {
     }
 
     ensurePlayerNightfallFields();
+    updateSetEffects(st);
     updateDayNight();
     if (player.attackCooldown > 0) player.attackCooldown--;
     if (player.skill1Cd > 0) player.skill1Cd--;
