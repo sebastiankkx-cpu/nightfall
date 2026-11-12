@@ -210,6 +210,7 @@
         <button onclick="startGame(false)">Entrar al Mundo 3D</button>
         <button onclick="toggleFullscreen()" style="background:#263238; border-color:#78909c;">⛶ Pantalla completa</button>
         <div class="subtitle" id="mobile-hint" style="display:none; margin:6px 0 0 0;">📱 Android: gira el teléfono en horizontal. Pellizca con dos dedos para acercar o alejar la cámara.</div>
+        <div id="nf-diag" style="margin-top:8px; font:10px monospace; color:#777; text-align:center;"></div>
     </div>
 </div>
 
@@ -346,6 +347,10 @@
 })();
 </script>
 <script>
+window.addEventListener('load', function () {
+    var d = document.getElementById('nf-diag'); if (!d) return;
+    d.textContent = 'modelos: ' + (window.NF_GLB ? Object.keys(window.NF_GLB).length : 'NO') + ' · loader: ' + ((window.THREE && THREE.GLTFLoader) ? 'sí' : 'NO') + ' · inflate: ' + (window.fflate ? 'sí' : 'NO') + ' · three: ' + (window.THREE ? THREE.REVISION : 'NO');
+});
 window.addEventListener('error', function (e) {
     try {
         var d = document.getElementById('nf-err');
@@ -1022,7 +1027,9 @@ function loadWeaponGLB(kind, cb) {
 }
 
 function attachHeroGLB(race, model) {
-    const key = HERO_GLB[race]; if (!key || !window.NF_GLB) return;
+    const key = HERO_GLB[race];
+    const why = !key ? 'raza sin modelo' : (!window.NF_GLB ? 'datos 3D no incluidos' : (!window.THREE || !THREE.GLTFLoader ? 'cargador GLTF ausente' : ''));
+    if (why) { window.__nfGlbErr = why; if (typeof showNotify === 'function') showNotify('⚠ Modelo 3D no disponible (' + why + ')'); return; }
     const holder = playerMesh;
     parseGLB(key, g => {
         if (!g && window.__nfGlbErr && typeof showNotify === 'function') showNotify('⚠ Modelo 3D no disponible (' + window.__nfGlbErr + ')');
