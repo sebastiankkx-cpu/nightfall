@@ -1004,16 +1004,17 @@ async function glbBuffer(key) {
     const b64 = (window.NF_GLB || {})[key]; if (!b64) return null;
     const bin = atob(b64), u = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    if (typeof DecompressionStream === 'undefined') return null; // sin soporte: héroe procedural
+    if (window.fflate) { const out = fflate.gunzipSync(u); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+    if (typeof DecompressionStream === 'undefined') return null;
     const ds = new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'));
     return await new Response(ds).arrayBuffer();
 }
 function parseGLB(key, cb) {
     if (!THREE.GLTFLoader) { cb(null); return; }
     glbBuffer(key).then(buf => {
-        if (!buf) { cb(null); return; }
-        try { new THREE.GLTFLoader().parse(buf, '', g => cb(g), () => cb(null)); } catch (e) { cb(null); }
-    }).catch(() => cb(null));
+        if (!buf) { window.__nfGlbErr = 'sin datos ' + key; cb(null); return; }
+        try { new THREE.GLTFLoader().parse(buf, '', g => cb(g), err => { window.__nfGlbErr = 'parse ' + key + ': ' + (err && err.message || err); cb(null); }); } catch (e) { window.__nfGlbErr = 'excepción ' + key + ': ' + e.message; cb(null); }
+    }).catch(e => { window.__nfGlbErr = 'descompresión ' + key + ': ' + (e && e.message || e); cb(null); });
 }
 function loadWeaponGLB(kind, cb) {
     if (_glbWeaponCache[kind]) { cb(_glbWeaponCache[kind].scene.clone(true)); return; }
@@ -1024,6 +1025,7 @@ function attachHeroGLB(race, model) {
     const key = HERO_GLB[race]; if (!key || !window.NF_GLB) return;
     const holder = playerMesh;
     parseGLB(key, g => {
+        if (!g && window.__nfGlbErr && typeof showNotify === 'function') showNotify('⚠ Modelo 3D no disponible (' + window.__nfGlbErr + ')');
         if (!g || playerMesh !== holder || heroGLB) return;
         const root = g.scene;
         root.scale.setScalar(GLB_SCALE);
