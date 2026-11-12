@@ -335,6 +335,17 @@
 <div id="vignette"></div>
 
 <script>
+/* Visores con sandbox (vista previa de archivos) bloquean localStorage: se usa memoria temporal para no romper el juego */
+(function () {
+    var real = null;
+    try { real = window.localStorage; real.setItem('__nf', '1'); real.removeItem('__nf'); } catch (e) { real = null; }
+    if (real) { window.nfStore = real; return; }
+    var mem = {};
+    window.__nfNoSave = true;
+    window.nfStore = { getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; }, setItem: function (k, v) { mem[k] = String(v); }, removeItem: function (k) { delete mem[k]; }, clear: function () { mem = {}; } };
+})();
+</script>
+<script>
 window.addEventListener('error', function (e) {
     try {
         var d = document.getElementById('nf-err');
@@ -1170,7 +1181,7 @@ window.addEventListener('resize', () => {
     }
 });
 
-if (localStorage.getItem('sacredLiteSaveV5')) {
+if (nfStore.getItem('sacredLiteSaveV5')) {
     document.getElementById('btn-continue').style.display = 'block';
 }
 
@@ -2531,12 +2542,12 @@ function saveGame(notify = false) {
         inventory: player.inventory, autoSell: player.autoSell, shards: player.shards, autoEquip: player.autoEquip, autoStats: player.autoStats, quests: player.quests,
         currentRegion: currentZone, posX: Math.round(player.x), posY: Math.round(player.y), attrs: player.attrs, statPoints: player.statPoints, spec: player.spec, pityCounter: player.pityCounter, firstKillBosses: player.firstKillBosses, lore: player.lore, pois: player.pois, explored: player.explored, lastSaveTime: Date.now(), gameHour: gameHour, dayCount: dayCount
     };
-    localStorage.setItem('sacredLiteSaveV5', JSON.stringify(saveData));
+    nfStore.setItem('sacredLiteSaveV5', JSON.stringify(saveData));
     if (notify) showNotify("💾 ¡Partida 3D guardada correctamente!");
 }
 
 function loadSavedGame() {
-    const raw = localStorage.getItem('sacredLiteSaveV5');
+    const raw = nfStore.getItem('sacredLiteSaveV5');
     if (!raw) return;
     const saved = JSON.parse(raw);
     Object.assign(player, saved);
